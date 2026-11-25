@@ -1,0 +1,45 @@
+/* Page + editor panel styles (NOT part of the exported image) */
+html,body{margin:0;height:100%;overflow:hidden;background:#0b0f19}
+body{font-family:"Inter","Segoe UI",Roboto,Arial,sans-serif}
+body.export{background:#000}
+body.export #panel,body.export #pOpen{display:none}
+
+#panel{position:fixed;top:0;right:0;bottom:0;width:400px;display:none;flex-direction:column;z-index:20;
+  background:#111827;color:#e5e7eb;border-left:1px solid #263043;box-shadow:-10px 0 30px rgba(0,0,0,.4);font-size:14px}
+body.panel-open #panel{display:flex}
+body.panel-open #pOpen{display:none}
+#pOpen{position:fixed;right:16px;bottom:16px;z-index:20;padding:12px 18px;border:0;border-radius:10px;cursor:pointer;
+  background:#1e6bff;color:#fff;font:700 15px Inter,Arial,sans-serif;box-shadow:0 6px 18px rgba(0,0,0,.4)}
+
+.p-head{display:flex;align-items:center;justify-content:space-between;padding:14px 16px;border-bottom:1px solid #263043}
+.p-head b{display:block;font-size:17px;color:#fff}
+.p-head small{color:#8b97ad;font-size:12px}
+.p-head .x{background:none;border:0;color:#8b97ad;font-size:26px;line-height:1;cursor:pointer}
+.p-body{flex:1;overflow:auto;padding:6px 16px 12px}
+.p-body section{padding:10px 0;border-bottom:1px solid #1e2738}
+.p-body h4{display:flex;align-items:center;justify-content:space-between;margin:0 0 8px;font-size:12px;letter-spacing:1px;text-transform:uppercase;color:#ffc619}
+.row2{display:grid;grid-template-columns:1fr 1fr;gap:8px}
+.row3{display:grid;grid-template-columns:1.3fr 1fr 1fr;gap:8px}
+.sectors{gap:6px 8px}
+.f{display:flex;flex-direction:column;gap:3px;margin-bottom:6px}
+.f span{font-size:12px;color:#9aa6bd}
+.f input{width:100%;box-sizing:border-box;padding:7px 9px;border-radius:7px;border:1px solid #2c3a52;background:#0b1220;color:#fff;font:600 14px Inter,Arial,sans-serif}
+.f input:focus{outline:2px solid #1e6bff;border-color:#1e6bff}
+.sectors .f{flex-direction:row;align-items:center;justify-content:space-between;margin:0}
+.sectors .f span{font-size:13px;color:#cfd6e4}
+.sectors .f input{width:86px;text-align:right}
+button,.btn2{font:600 13px Inter,Arial,sans-serif;cursor:pointer;border-radius:8px;border:1px solid #2c3a52;background:#1a2336;color:#e5e7eb;padding:9px 10px;text-align:center}
+button:hover,.btn2:hover{background:#223050}
+button:disabled{opacity:.6;cursor:wait}
+.mini{padding:4px 8px;font-size:11px;letter-spacing:0;text-transform:none;color:#cfe0ff}
+.wide{width:100%;margin-top:4px}
+.p-foot{display:flex;flex-direction:column;gap:8px;padding:12px 16px 14px;border-top:1px solid #263043;background:#0e1422}
+.primary{background:#1e6bff;border-color:#1e6bff;color:#fff;font-size:15px;padding:12px}
+.primary:hover{background:#3a82ff}
+.ghost{background:none;color:#8b97ad}
+#msg{min-height:16px;font-size:12px;color:#4fe38e;text-align:center}
+.chk{display:flex;align-items:center;gap:8px;margin-bottom:8px;font-size:13px;color:#cfd6e4;cursor:pointer}
+.usf{margin-bottom:6px}.usf b{display:block;font-size:12px;color:#9aa6bd;margin-bottom:4px}
+.usf{display:grid;grid-template-columns:1.3fr 1fr 1fr;gap:8px}.usf b{grid-column:1/-1;margin:0}
+.f textarea{width:100%;box-sizing:border-box;padding:7px 9px;border-radius:7px;border:1px solid #2c3a52;background:#0b1220;color:#fff;font:500 12px Inter,Arial,sans-serif;resize:vertical}
+.f textarea:focus{outline:2px solid #1e6bff;border-color:#1e6bff}

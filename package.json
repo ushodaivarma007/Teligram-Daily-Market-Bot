@@ -1,0 +1,4 @@
+{ "name": "rupayi-market-graphics", "version": "3.0.0", "private": true,
+  "scripts": { "render:open": "node render.js market-open.png 1 index.html", "render:close": "node render.js market-close.png 1 close.html",
+               "render4k:open": "node render.js market-open-4k.png 2 index.html", "render4k:close": "node render.js market-close-4k.png 2 close.html", "embed": "node embed-assets.js" },
+  "dependencies": { "puppeteer-core": "^24.0.0" } }
