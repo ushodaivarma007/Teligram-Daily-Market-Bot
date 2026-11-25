@@ -1,0 +1,44 @@
+name: Market snapshot to Telegram
+on:
+  schedule:
+    - cron: "52 2 * * 1-5"    # 8:22 AM IST, waits until 9:17  (Market Open)
+    - cron: "7 9 * * 1-5"     # 2:37 PM IST, waits until 3:32  (Market Close)
+  workflow_dispatch:
+    inputs:
+      mode: { description: "open or close", default: "open" }
+      dry_run: { description: "true = do not post to Telegram", default: "true" }
+jobs:
+  post:
+    runs-on: ubuntu-latest
+    timeout-minutes: 90
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with: { node-version: 20 }
+      - name: Decide mode and wait for the exact minute
+        run: |
+          if [ "${{ github.event_name }}" = "schedule" ]; then
+            if [ "${{ github.event.schedule }}" = "52 2 * * 1-5" ]; then M=open; T=09:17; else M=close; T=15:32; fi
+            DRY=false
+          else M="${{ inputs.mode }}"; DRY="${{ inputs.dry_run }}"; T=""; fi
+          echo "MODE=$M" >> $GITHUB_ENV; echo "DRY=$DRY" >> $GITHUB_ENV
+          [ -n "$T" ] && node automation/wait-until.js $T || true
+      - run: npm install puppeteer-core --no-save
+      - name: Fetch live data (skips on market holidays)
+        run: node automation/fetch-data.js $MODE
+      - name: Render image
+        run: |
+          if [ -f skip.flag ]; then echo "Market holiday - not posting"; exit 0; fi
+          PAGE=index.html; [ "$MODE" = "close" ] && PAGE=close.html
+          CHROME_PATH=/usr/bin/google-chrome node render.js out.png 1 $PAGE
+      - name: Post to Telegram
+        env:
+          TELEGRAM_BOT_TOKEN: ${{ secrets.TELEGRAM_BOT_TOKEN }}
+          TELEGRAM_CHAT_ID: ${{ secrets.TELEGRAM_CHAT_ID }}
+        run: |
+          if [ -f skip.flag ]; then exit 0; fi
+          if [ "$DRY" = "true" ]; then echo "Dry run - not posting"; exit 0; fi
+          node automation/post-telegram.js out.png $MODE
+      - uses: actions/upload-artifact@v4
+        if: always()
+        with: { name: snapshot, path: out.png, if-no-files-found: ignore }
