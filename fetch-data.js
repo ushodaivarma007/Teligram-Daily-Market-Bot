@@ -54,8 +54,21 @@ async function nseIndices(today) {
 
   // --- Sensex / Nifty: live figures; holiday if nothing traded today ---
   // The close must be stamped after 3:30 PM and unchanged between two readings.
-  const idx = await live.indexQuotes(today, mode === "close" ? "15:30" : "09:15", mode === "close");
+  let idx = await live.indexQuotes(today, mode === "close" ? "15:30" : "09:15", mode === "close");
   if (!idx) { console.log(`HOLIDAY_OR_NO_TRADING (no trading on ${today})`); fs.writeFileSync("skip.flag", "holiday"); return; }
+
+  // The close is posted only when NSE's own Nifty figure agrees, so a stale feed cannot slip through.
+  let nse = await nseIndices(today);
+  for (let i = 1; mode === "close"; i++) {
+    const n = nse["NIFTY 50"];
+    if (n && Math.abs(n.last - idx.nifty.value) < 0.05) { console.log(`Nifty close confirmed by NSE: ${n.last}`); break; }
+    const seen = `NSE ${n && n.last}, live feed ${idx.nifty.value}`;
+    if (i >= 8) throw new Error(`Nifty close not confirmed (${seen}) - nothing posted`);
+    console.log(`waiting for NSE to agree (try ${i}): ${seen}`);
+    await live.sleep(60000);
+    idx = await live.indexQuotes(today, "15:30", true);
+    nse = await nseIndices(today);
+  }
 
   const build = async k => {
     const q = idx[k], out = { value: q.value, change: q.change, percent: q.percent, open: q.open };
@@ -79,7 +92,7 @@ async function nseIndices(today) {
   const timeStr = new Intl.DateTimeFormat("en-US", { ...IST, hour: "numeric", minute: "2-digit", hour12: true }).format(at);
 
   // --- sectors: NSE first, Yahoo second; any gap = abort (no fake zeros) ---
-  const nse = await nseIndices(today), sectors = {}, missing = [];
+  const sectors = {}, missing = [];
   for (const [name, s] of Object.entries(cfg.sectors)) {
     let pct = null;
     const d = nse[(s.nse || "").toUpperCase()];
