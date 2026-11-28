@@ -78,8 +78,8 @@ async function pageData(url) {
   return JSON.parse(m[1]).props.pageProps.staticData;
 }
 
-// The live price of the most active contract (highest open interest) among the
-// nearest expiries - this avoids showing a contract that is about to expire.
+// The live price of the most traded contract (highest volume today) among the nearest
+// expiries: the benchmark price, which moves to the next month when traders do.
 async function mcxPrice(asset, unit, now, maxAgeMin = 20) {
   const today = istDate(now);
   return retry("MCX " + asset, async () => {
@@ -93,7 +93,7 @@ async function mcxPrice(asset, unit, now, maxAgeMin = 20) {
       if (!s.contractDetails || s.contractDetails.contractId !== c.contractId) throw new Error("wrong contract page for " + c.contractId);
       quotes.push({ ...c, live: s.livePriceDetails });
     }
-    const best = quotes.sort((a, b) => (b.live.openInterest || 0) - (a.live.openInterest || 0))[0], q = best.live;
+    const best = quotes.sort((a, b) => (b.live.volume || 0) - (a.live.volume || 0))[0], q = best.live;
     for (const f of ["ltp", "close", "tsInMillis"])
       if (!isNum(q[f]) || q[f] <= 0) throw new Error(`bad "${f}" in live data: ${q[f]}`);
     const at = new Date(q.tsInMillis < 1e12 ? q.tsInMillis * 1000 : q.tsInMillis);
@@ -101,7 +101,7 @@ async function mcxPrice(asset, unit, now, maxAgeMin = 20) {
     const change = r2(q.ltp - q.close), percent = r2(change / q.close * 100);
     if (Math.abs(percent) > 20) throw new Error("implausible move: " + percent + "%");
     const month = new Intl.DateTimeFormat("en-US", { month: "short", timeZone: "UTC" }).format(new Date(best.expiryDate + "T00:00:00Z")).toUpperCase();
-    console.log(`MCX ${asset}: ${best.contractId} ${q.ltp} (prev ${q.close}) @ ${istDate(at)} ${istTime(at)}, OI ${q.openInterest}`);
+    console.log(`MCX ${asset}: ${best.contractId} ${q.ltp} (prev ${q.close}) @ ${istDate(at)} ${istTime(at)}, volume ${q.volume}`);
     return { value: q.ltp, change, percent, unit: `${unit} · MCX ${month}` };
   });
 }
