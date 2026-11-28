@@ -2,6 +2,7 @@
 // if anything is missing it throws, so nothing wrong gets posted.
 // Usage: node fetch-data.js open|close [--check]
 const fs = require("fs"), path = require("path"), cfg = require("./config");
+const live = require("./live");
 const UA = "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/124 Safari/537.36";
 const IST = { timeZone: "Asia/Kolkata" };
 const istDate = d => new Intl.DateTimeFormat("en-CA", IST).format(d); // YYYY-MM-DD
@@ -48,33 +49,34 @@ async function nseIndices(today) {
 (async () => {
   const mode = process.argv[2], check = process.argv.includes("--check");
   if (!["open", "close"].includes(mode)) throw new Error("mode must be open|close");
-  const now = new Date(), today = istDate(now);
+  // TEST_NOW lets a past trading day be re-checked by hand; the workflow never sets it.
+  const now = process.env.TEST_NOW ? new Date(process.env.TEST_NOW) : new Date(), today = istDate(now);
 
-  // --- main indices (+ market-holiday detection: last traded date must be today) ---
-  const daily = {}, intra = {};
-  for (const k of ["sensex", "nifty"]) {
-    daily[k] = await yahoo(cfg.indices[k].yahoo, "10d", "1d");
-    intra[k] = await yahoo(cfg.indices[k].yahoo, "1d", mode === "close" ? "15m" : "1m");
-  }
-  const lastTrade = istDate(new Date(intra.nifty.meta.regularMarketTime * 1000));
-  if (lastTrade !== today) { console.log(`HOLIDAY_OR_NO_TRADING (last trade ${lastTrade}, today ${today})`); fs.writeFileSync("skip.flag", "holiday"); return; }
+  // --- Sensex / Nifty: live figures; holiday if nothing traded today ---
+  // The close must be stamped after 3:30 PM and unchanged between two readings.
+  const idx = await live.indexQuotes(today, mode === "close" ? "15:30" : "09:15", mode === "close");
+  if (!idx) { console.log(`HOLIDAY_OR_NO_TRADING (no trading on ${today})`); fs.writeFileSync("skip.flag", "holiday"); return; }
 
-  const build = k => {
-    const rows = intra[k].rows, first = rows[0], last = rows[rows.length - 1];
-    const days = daily[k].rows.filter(r => istDate(new Date(r.t)) < today);
-    const prev = days[days.length - 1];
-    if (!first || !prev) throw new Error("incomplete data for " + k);
-    const value = r2(last.c), change = r2(value - prev.c), out = { value, change, percent: r2(change / prev.c * 100), open: r2(first.o ?? first.c) };
-    if (mode === "close") {
-      out.high = r2(Math.max(...rows.map(r => r.h))); out.low = r2(Math.min(...rows.map(r => r.l)));
-      out.spark = rows.map(r => r2(r.c));
-    }
-    return { out, prev };
+  const build = async k => {
+    const q = idx[k], out = { value: q.value, change: q.change, percent: q.percent, open: q.open };
+    if (mode === "close") { out.high = q.high; out.low = q.low; out.spark = await live.intradayLine(k, q, today); }
+    return out;
   };
-  const sx = build("sensex"), nf = build("nifty");
-  const prevDate = new Date(daily.nifty.rows.filter(r => istDate(new Date(r.t)) < today).pop().t);
+  const sx = await build("sensex"), nf = await build("nifty");
+  const at = process.env.TEST_NOW ? now : new Date(); // the moment the figures were read
+
+  // Date of the previous session, for the label. Shown only if that day's close agrees.
+  let prevDay = "Last session";
+  try {
+    const u = `https://query1.finance.yahoo.com/v8/finance/chart/${encodeURIComponent(cfg.indices.nifty.yahoo)}?range=10d&interval=1d`;
+    const res = (await live.retry("previous day", () => getJSON(u))).chart.result[0], close = res.indicators.quote[0].close;
+    const i = res.timestamp.map(t => istDate(new Date(t * 1000))).reduce((a, d, n) => (d < today ? n : a), -1);
+    if (i >= 0 && close[i] != null && Math.abs(close[i] / idx.nifty.prevClose - 1) < 0.0005)
+      prevDay = new Intl.DateTimeFormat("en-GB", { ...IST, weekday: "long", day: "numeric", month: "long" }).format(new Date(res.timestamp[i] * 1000)).replace(",", "");
+    else console.warn("previous-day date could not be confirmed");
+  } catch (e) { console.warn(e.message); }
   const fmt = (o) => new Intl.DateTimeFormat("en-GB", { ...IST, ...o }).format(now);
-  const timeStr = new Intl.DateTimeFormat("en-US", { ...IST, hour: "numeric", minute: "2-digit", hour12: true }).format(now);
+  const timeStr = new Intl.DateTimeFormat("en-US", { ...IST, hour: "numeric", minute: "2-digit", hour12: true }).format(at);
 
   // --- sectors: NSE first, Yahoo second; any gap = abort (no fake zeros) ---
   const nse = await nseIndices(today), sectors = {}, missing = [];
@@ -90,10 +92,9 @@ async function nseIndices(today) {
   const data = {
     date: fmt({ day: "2-digit", month: "short", year: "numeric" }).toUpperCase().replace(/,/g, ""),
     time: timeStr + " IST",
-    sensex: sx.out, nifty: nf.out, sectors,
-    previousClose: { day: new Intl.DateTimeFormat("en-GB", { ...IST, weekday: "long", day: "numeric", month: "long" }).format(prevDate).replace(",", ""),
-                     sensex: r2(sx.prev.c), nifty: r2(nf.prev.c) },
-    source: "Source: NSE, BSE.",
+    sensex: sx, nifty: nf, sectors,
+    previousClose: { day: prevDay, sensex: idx.sensex.prevClose, nifty: idx.nifty.prevClose },
+    source: mode === "close" ? "Source: NSE, BSE, MCX." : "Source: NSE, BSE.",
     disclaimer: "Educational information only. Not investment advice or a recommendation. I am not a SEBI-registered Investment Adviser or Research Analyst. Data may be delayed; verify on NSE/BSE.",
     brand: "RUPAYI TELUGU",
   };
@@ -104,12 +105,10 @@ async function nseIndices(today) {
       data[k] = { value: v, change: r2(v - p), percent: r2((v / p - 1) * 100) };
     }
   } else {
-    // Gold & silver: international futures in US$/oz (Yahoo). NOT the MCX rupee price - see AUTOMATION.md.
+    // Gold & silver: MCX rupee price at the moment of posting.
     data.showUS = true;
-    for (const [k, unit] of [["gold", "US$/oz"], ["silver", "US$/oz"]]) {
-      const d = await yahoo(cfg.indices[k].yahoo, "5d", "1d"), rr = d.rows, v = r2(rr[rr.length - 1].c), p = rr[rr.length - 2].c;
-      data[k] = { value: v, change: r2(v - p), percent: r2((v / p - 1) * 100), unit };
-    }
+    data.gold = await live.mcxPrice("GOLD", "₹/10g", at);
+    data.silver = await live.mcxPrice("SILVER", "₹/kg", at);
   }
 
   const file = path.join(__dirname, mode === "open" ? "data.js" : "data-close.js");
